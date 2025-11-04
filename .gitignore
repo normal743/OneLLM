@@ -14,3 +14,5 @@ slurm*
 multimodal_llama2_7B
 weights
 image_large/
+.DS_Store
+model/.DS_Store

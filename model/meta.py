@@ -27,7 +27,7 @@ class MetaModel(nn.Module):
         self.tokenizer = Tokenizer(model_path=tokenizer_path)
         model_args.vocab_size = self.tokenizer.n_words
 
-        model = Transformer(model_args)
+        model = Transformer(model_args, enable_capture=True)
         mp_rank = fs_init.get_model_parallel_rank()
         if llama_ckpt_dir is not None:
             ckpt_path = os.path.join(llama_ckpt_dir, f"consolidated.{mp_rank:02d}.pth")

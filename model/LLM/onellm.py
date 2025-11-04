@@ -224,8 +224,10 @@ class Mlp(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, params: ModelArgs):
+    def __init__(self, params: ModelArgs, enable_capture=False):
         super().__init__()
+        self.captures = {}  # 用于存储中间层输出
+        self.enable_capture = enable_capture  # 是否启用捕获
         self.params = params
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
@@ -365,8 +367,7 @@ class Transformer(nn.Module):
         bsz = x.size(0)
         T = 1
         if modal in ['image']:
-            # modified from CLIP
-            x = self.clip.visual.conv1(x)  # shape = [*, width, grid, grid]
+            x = self.clip.visual.conv1(x)
         elif modal in ['audio', 'imu']:
             x = self.conv1[modal](x)
         elif modal == 'point':
@@ -383,38 +384,69 @@ class Transformer(nn.Module):
             # [B, 1, 8196] -> [B, 1024, 8]
             x = x.reshape(x.size(0), self.clip.visual.conv1.out_channels, -1)
 
+        # 捕获点1: tokenizer后的多模态token
+        if self.enable_capture:
+            self.captures['image_02_after_tokenizer'] = x.detach().cpu().numpy()
+
         image_feats = self.clip_encode_image(x, modal=modal)
-        # take mean on time dimension
-        # all inputs are reduced to [B, L, D]
+
+        # 捕获点2: 经过CLIP后
+        if self.enable_capture:
+            self.captures['image_03_after_clip'] = image_feats.detach().cpu().numpy()
+
         bsz = int(bsz / T)
-        image_feats = image_feats.reshape(
-            bsz, T, *image_feats.shape[1:]).mean(dim=1)
+        image_feats = image_feats.reshape(bsz, T, *image_feats.shape[1:]).mean(dim=1)
 
         image_feats = self.clip_proj1[modal](image_feats)
-        image_feats = torch.cat(
-            [self.resample_tokens[modal].repeat(bsz, 1, 1), image_feats], dim=1)
 
-        # routing modalites
-        # [B, L, D]->[B, L, N]
+        # 捕获点3: 第一次投影后
+        if self.enable_capture:
+            self.captures['image_04_after_proj1'] = image_feats.detach().cpu().numpy()
+
+        image_feats = torch.cat([self.resample_tokens[modal].repeat(bsz, 1, 1), image_feats], dim=1)
+
+        # 捕获点4: 增加resample token后
+        if self.enable_capture:
+            self.captures['image_05_after_resample_concat'] = image_feats.detach().cpu().numpy()
+
         routing_weights = self.routers[modal](image_feats).sigmoid()
         routing_weights = routing_weights / routing_weights.sum(dim=-1, keepdim=True)
+
+        # 捕获点5: routing weights
+        if self.enable_capture:
+            self.captures['image_06_routing_weights'] = routing_weights.detach().cpu().numpy()
 
         image_feats_experts = []
         for expert_id in range(self.num_experts):
             image_feats_expert = image_feats
-            for layer in self.resample_layers[str(expert_id)]:
+            for layer_id, layer in enumerate(self.resample_layers[str(expert_id)]):
                 image_feats_expert = layer(image_feats_expert, 0, None, None)
 
+                # 捕获点6: 每个专家每层的输出
+                if self.enable_capture:
+                    self.captures[f'image_07_expert{expert_id}_layer{layer_id}'] = image_feats_expert.detach().cpu().numpy()
+
             image_feats_expert = image_feats_expert[:, :self.resample_tokens[modal].size(1)]
-            routing_weight = routing_weights[:, :self.resample_tokens[modal].size(
-                1), expert_id]
-            # [B, L, D] * [B, L, 1]
+            routing_weight = routing_weights[:, :self.resample_tokens[modal].size(1), expert_id]
             image_feats_expert = image_feats_expert * routing_weight[:, :, None]
+
+            # 捕获点7: 专家加权后
+            if self.enable_capture:
+                self.captures[f'image_08_expert{expert_id}_weighted'] = image_feats_expert.detach().cpu().numpy()
 
             image_feats_experts.append(image_feats_expert)
 
         image_feats = sum(image_feats_experts)
+
+        # 捕获点8: 专家融合后
+        if self.enable_capture:
+            self.captures['image_09_experts_merged'] = image_feats.detach().cpu().numpy()
+
         image_feats = self.clip_proj2[modal](image_feats)
+
+        # 捕获点9: 第二次投影后
+        if self.enable_capture:
+            self.captures['image_10_after_proj2'] = image_feats.detach().cpu().numpy()
 
         return image_feats
 
@@ -450,16 +482,30 @@ class Transformer(nn.Module):
         modal = modal[0] if isinstance(modal, list) else modal
         _bsz, seqlen = tokens.shape
         if start_pos == 0:
-            # kv cache will not re-allocate if size is unchanged
             self._allocate_kv_cache(_bsz)
         h = self.tok_embeddings(tokens)
+
+        # 捕获点10: 文字token
+        if self.enable_capture:
+            self.captures['text_01_tokens'] = h.detach().cpu().numpy()
+
         self.freqs_cis = self.freqs_cis.to(h.device)
 
         if image is not None:
             h_bos, h_caption = h[:, :1], h[:, 1:]
             image_tokens = self.encode_image(image, modal)
+
+            # 捕获点11: image tokens
+            if self.enable_capture:
+                self.captures['image_01_tokens'] = image_tokens.detach().cpu().numpy()
+
             self.cache_image_words = image_tokens.shape[1]
             h = torch.cat((h_bos, self.start_tag[modal].repeat(_bsz, 1, 1), image_tokens, self.end_tag[modal].repeat(_bsz, 1, 1), h_caption), dim=1)
+
+            # 捕获点12: 拼接后带位置编码
+            if self.enable_capture:
+                self.captures['combine_01_concat_with_pos'] = h.detach().cpu().numpy()
+
             seqlen = h.shape[1]
             freqs_cis = self.freqs_cis[0: seqlen]
         else:
@@ -467,22 +513,28 @@ class Transformer(nn.Module):
                 self.cache_image_words = 0
                 freqs_cis = self.freqs_cis[0: seqlen]
             else:
-                # if image was not None when start_pos=0,
-                # the offset should be added to start_pos within later forward_inference calls
                 start_pos = start_pos + self.cache_image_words
                 freqs_cis = self.freqs_cis[start_pos: start_pos + seqlen]
-
-        # freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
 
         mask = None
         if seqlen > 1:
             mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
             mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
 
-        for layer in self.layers:
+        for layer_id, layer in enumerate(self.layers):
             h = layer(h, start_pos, freqs_cis, mask)
+
+            # 捕获点13: 每个transformer层的输出
+            if self.enable_capture:
+                self.captures[f'combine_02_transformer_layer{layer_id}'] = h.detach().cpu().numpy()
+
         h = self.norm(h)
-        output = self.output(h[:, -1, :])  # only compute last logits
+        output = self.output(h[:, -1, :])
+
+        # 捕获点14: 最终输出
+        if self.enable_capture:
+            self.captures['combine_03_final_output'] = output.detach().cpu().numpy()
+
         return output.float()
 
     def _allocate_kv_cache(self, max_batch_size: int) -> None:
