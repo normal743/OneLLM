@@ -286,7 +286,7 @@ class Transformer(nn.Module):
         self.routers = nn.ModuleDict()
         self.start_tag = nn.ParameterDict()
         self.end_tag = nn.ParameterDict()
-        self.modals = ['image', 'video', 'audio', 'point', 'rgbd', 'rgbn', 'fmri', 'imu']
+        self.modals = ['image']# , 'video', 'audio', 'point', 'rgbd', 'rgbn', 'fmri', 'imu'
         for modal in self.modals:
             if modal in ['image', 'video', 'rgbd', 'rgbn']:
                 modal_tokens = 256 + 1

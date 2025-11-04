@@ -1,5 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu117
 torch==2.0.0+cu117
+torchvision==0.15.0+cu117
+torchaudio==2.0.0+cu117
 packaging
 fairscale
 sentencepiece
@@ -8,9 +10,8 @@ huggingface_hub
 open_clip_torch==2.23.0
 decord
 pytorchvideo==0.1.5
-torchaudio
 matplotlib
-flash-attn
+#flash-attn==2.3.0
 gradio
 pandas
 tqdm
