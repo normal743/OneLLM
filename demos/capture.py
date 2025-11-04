@@ -55,9 +55,9 @@ def model_worker(args: argparse.Namespace) -> None:
         # 读取CSV
         df = pd.read_csv(args.csv_path)
         df.columns = df.columns.str.strip()  # 去掉列名空格
-        df['image_name'] = df['image_name'].str.strip()
-        df['comment'] = df['comment'].str.strip()
-        df['comment_number'] = df['comment_number'].astype(str).str.strip()  # 先转换为字符串再strip
+        df['image_name'] = df['image_name'].astype(str).str.strip()
+        df['comment'] = df['comment'].astype(str).str.strip()
+        df['comment_number'] = df['comment_number'].astype(int)  # 直接转为整数，不需要strip
         
         grouped = df.groupby('image_name').filter(lambda x: len(x) == 5)
         image_list = grouped['image_name'].unique().tolist()
@@ -156,9 +156,9 @@ def model_worker(args: argparse.Namespace) -> None:
     print('Loading CSV data...')
     df = pd.read_csv(args.csv_path)  # 去掉 delimiter='|'
     df.columns = df.columns.str.strip()  # 去掉列名空格
-    df['image_name'] = df['image_name'].str.strip()
-    df['comment'] = df['comment'].str.strip()  # 去掉空格
-    df['comment_number'] = df['comment_number'].str.strip()  # 去掉空格
+    df['image_name'] = df['image_name'].astype(str).str.strip()
+    df['comment'] = df['comment'].astype(str).str.strip()  # 去掉空格
+    df['comment_number'] = df['comment_number'].astype(int)  # ← 改成这样！
 
     grouped = df.groupby('image_name').filter(lambda x: len(x) == 5)
     image_list = grouped['image_name'].unique().tolist()
