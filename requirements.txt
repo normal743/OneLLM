@@ -13,3 +13,4 @@ matplotlib
 flash-attn
 gradio
 pandas
+tqdm

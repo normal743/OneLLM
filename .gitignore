@@ -16,3 +16,5 @@ weights
 image_large/
 .DS_Store
 model/.DS_Store
+myenv/
+requirements_mac.txt

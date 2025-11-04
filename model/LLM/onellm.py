@@ -18,8 +18,12 @@ from fairscale.nn.model_parallel.layers import (
     ColumnParallelLinear,
 )
 from ..components import RMSNorm
-from flash_attn import flash_attn_func
-
+try:
+    from flash_attn import flash_attn_func
+except ImportError:
+    flash_attn_func = None  # 假装定义
+    if input('is this a local test? press y to continue... n to raise error. ')  != 'y':
+        raise ImportError('flash_attn is not installed. Please install flash_attn to use Attention module.')
 import open_clip
 
 

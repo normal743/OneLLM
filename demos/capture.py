@@ -53,11 +53,11 @@ def model_worker(args: argparse.Namespace) -> None:
         os.makedirs(args.output_dir, exist_ok=True)
         
         # 读取CSV
-        df = pd.read_csv(args.csv_path, delimiter='|')
+        df = pd.read_csv(args.csv_path)
         df.columns = df.columns.str.strip()  # 去掉列名空格
         df['image_name'] = df['image_name'].str.strip()
-        df['comment'] = df[' comment'].str.strip()
-        df['comment_number'] = df[' comment_number'].str.strip()
+        df['comment'] = df['comment'].str.strip()
+        df['comment_number'] = df['comment_number'].astype(str).str.strip()  # 先转换为字符串再strip
         
         grouped = df.groupby('image_name').filter(lambda x: len(x) == 5)
         image_list = grouped['image_name'].unique().tolist()
@@ -89,8 +89,8 @@ def model_worker(args: argparse.Namespace) -> None:
             prompts_df = grouped[grouped['image_name'] == img_name]
             
             for _, row in prompts_df.iterrows():
-                prompt_idx = int(row[' comment_number'])
-                prompt_text = row[' comment']
+                prompt_idx = int(row['comment_number'])  # 去掉空格
+                prompt_text = row['comment']  # 去掉空格
                 
                 print(f"\n{'-'*50}")
                 print(f"Prompt {prompt_idx}/4: {prompt_text[:40]}...")
@@ -154,17 +154,20 @@ def model_worker(args: argparse.Namespace) -> None:
 
     # 读取CSV数据
     print('Loading CSV data...')
-    df = pd.read_csv(args.csv_path, delimiter='|')
+    df = pd.read_csv(args.csv_path)  # 去掉 delimiter='|'
     df.columns = df.columns.str.strip()  # 去掉列名空格
     df['image_name'] = df['image_name'].str.strip()
-    df['comment'] = df[' comment'].str.strip()
-    df['comment_number'] = df[' comment_number'].str.strip()
-    
+    df['comment'] = df['comment'].str.strip()  # 去掉空格
+    df['comment_number'] = df['comment_number'].str.strip()  # 去掉空格
+
     grouped = df.groupby('image_name').filter(lambda x: len(x) == 5)
     image_list = grouped['image_name'].unique().tolist()
-    
-    random.seed(args.seed)
-    selected_images = random.sample(image_list, min(args.num_samples, len(image_list)))
+
+    # 直接使用预定义的选定图像列表（假设你有 selected_images.csv 或硬编码列表）
+    # 示例：从文件读取或硬编码
+    selected_images = image_list  # 如果所有都选定；否则替换为你的选定列表
+    # 或者：selected_images = pd.read_csv('selected_100_images.csv')['image_name'].tolist()
+
     print(f'Selected {len(selected_images)} images for processing\n')
     
     os.makedirs(args.output_dir, exist_ok=True)
@@ -213,8 +216,8 @@ def model_worker(args: argparse.Namespace) -> None:
         prompts_df = grouped[grouped['image_name'] == img_name]
         
         for _, row in prompts_df.iterrows():
-            prompt_idx = int(row[' comment_number'])
-            prompt_text = row[' comment']
+            prompt_idx = int(row['comment_number'])
+            prompt_text = row['comment']
             
             print(f"\n{'-'*50}")
             print(f"Prompt {prompt_idx}/4: {prompt_text[:40]}...")
