@@ -83,10 +83,22 @@ def model_worker(args: argparse.Namespace) -> None:
             
             # 1. Image-only
             print(f"[1/6] Saving image.npz...", end=" ", flush=True)
+            image_path = os.path.join(img_folder, "image.npz")
+            
+            # 调试：打印路径和数据
+            print(f"\n  DEBUG: Saving to {os.path.abspath(image_path)}")
+            print(f"  DEBUG: debug_captures keys: {list(debug_captures.keys())}")
+            print(f"  DEBUG: debug_captures size: {sum(v.nbytes for v in debug_captures.values())/1024:.1f} KB")
+            
             np.savez_compressed(
-                os.path.join(img_folder, "image.npz"),
+                image_path,
                 **debug_captures
             )
+            
+            # 验证文件存在
+            file_exists = os.path.exists(image_path)
+            file_size = os.path.getsize(image_path) if file_exists else 0
+            print(f"  DEBUG: File exists={file_exists}, size={file_size/1024:.1f} KB")
             print("✓")
             
             # 2. Text-only (5 prompts)
