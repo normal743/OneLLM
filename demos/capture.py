@@ -38,82 +38,71 @@ def create_debug_captures():
 
 
 def model_worker(args: argparse.Namespace) -> None:
+    # ============ 参数验证 ============
+    if args.max_gen_len != 1:
+        raise ValueError(f"max_gen_len must be 1, got {args.max_gen_len}")
+    
     # ============ Debug 模式 ============
     if args.debug:
         print("\n" + "="*60)
         print("🐛 DEBUG MODE ENABLED")
         print("="*60)
         print("- Will use mock captures (fixed test values)")
-        print("- Temperature forced to 0")
-        print("- Max generation tokens: 10")
-        print("- Response text: 'this is a test'")
+        print("- max_gen_len = 1 (enforced)")
         print("="*60 + "\n")
         
-        # Debug模式下的简化流程
         os.makedirs(args.output_dir, exist_ok=True)
         
         # 读取CSV
         df = pd.read_csv(args.csv_path)
-        df.columns = df.columns.str.strip()  # 去掉列名空格
+        df.columns = df.columns.str.strip()
         df['image_name'] = df['image_name'].astype(str).str.strip()
         df['comment'] = df['comment'].astype(str).str.strip()
-        df['comment_number'] = df['comment_number'].astype(int)  # 直接转为整数，不需要strip
+        df['comment_number'] = df['comment_number'].astype(int)
         
         grouped = df.groupby('image_name').filter(lambda x: len(x) == 5)
         image_list = grouped['image_name'].unique().tolist()
+
         random.seed(args.seed)
         selected_images = random.sample(image_list, min(args.num_samples, len(image_list)))
         
-        print(f"Selected {len(selected_images)} images for debug testing\n")
+        print(f'Selected {len(selected_images)} images for processing\n')
         
-        # Debug captures
         debug_captures = create_debug_captures()
-        debug_response = "this is a test"
         
         for img_idx, img_name in enumerate(tqdm(selected_images, desc="Overall Progress"), 1):
-            print(f"\n{'='*50}")
-            print(f"Processing Image {img_idx}/{len(selected_images)}: {img_name}")
-            print(f"{'='*50}")
-            
             img_base_name = os.path.splitext(img_name)[0]
             
+            # 创建图片文件夹
+            img_folder = os.path.join(args.output_dir, img_base_name)
+            os.makedirs(img_folder, exist_ok=True)
+            
+            print(f"\n{'='*50}")
+            print(f"Processing {img_idx}/{len(selected_images)}: {img_name}")
+            print(f"{'='*50}")
+            
             # 1. Image-only
-            print(f"[Image-only] Capturing...", end=" ", flush=True)
+            print(f"[1/6] Saving image.npz...", end=" ", flush=True)
             np.savez_compressed(
-                os.path.join(args.output_dir, f"{img_base_name}.npz"),
+                os.path.join(img_folder, "image.npz"),
                 **debug_captures
             )
-            print(f"✓ Saved to {img_base_name}.npz")
+            print("✓")
             
             # 2. Text-only (5 prompts)
             prompts_df = grouped[grouped['image_name'] == img_name]
             
             for _, row in prompts_df.iterrows():
-                prompt_idx = int(row['comment_number'])  # 去掉空格
-                prompt_text = row['comment']  # 去掉空格
+                prompt_idx = int(row['comment_number'])
+                print(f"[{prompt_idx+2}/6] Saving prompt{prompt_idx}.npz...", end=" ", flush=True)
                 
-                print(f"\n{'-'*50}")
-                print(f"Prompt {prompt_idx}/4: {prompt_text[:40]}...")
-                print(f"{'-'*50}")
-                
-                # 创建prompt文件夹
-                prompt_dir = os.path.join(args.output_dir, f"{img_base_name}_prompt{prompt_idx}")
-                os.makedirs(prompt_dir, exist_ok=True)
-                
-                # 生成10个token的captures
-                for token_idx in range(10):
-                    print(f"\rGenerating token {token_idx+1}/10: {debug_response[:token_idx+10]}", end="", flush=True)
-                    np.savez_compressed(
-                        os.path.join(prompt_dir, f"token_{token_idx:03d}.npz"),
-                        **debug_captures
-                    )
-                
-                print(f"\n✓ Generated 10 tokens")
-                
-                # 保存response
-                with open(os.path.join(prompt_dir, "response.txt"), 'w') as f:
-                    f.write(debug_response)
-                print(f"✓ Saved captures to {img_base_name}_prompt{prompt_idx}/")
+                np.savez_compressed(
+                    os.path.join(img_folder, f"prompt{prompt_idx}.npz"),
+                    **debug_captures
+                )
+                print("✓")
+            
+            print(f"✓ Completed {img_base_name}/ (6 files)")
         
         print("\n" + "="*60)
         print("🐛 DEBUG MODE COMPLETED")
@@ -154,20 +143,18 @@ def model_worker(args: argparse.Namespace) -> None:
 
     # 读取CSV数据
     print('Loading CSV data...')
-    df = pd.read_csv(args.csv_path)  # 去掉 delimiter='|'
-    df.columns = df.columns.str.strip()  # 去掉列名空格
+    df = pd.read_csv(args.csv_path)
+    df.columns = df.columns.str.strip()
     df['image_name'] = df['image_name'].astype(str).str.strip()
-    df['comment'] = df['comment'].astype(str).str.strip()  # 去掉空格
-    df['comment_number'] = df['comment_number'].astype(int)  # ← 改成这样！
+    df['comment'] = df['comment'].astype(str).str.strip()
+    df['comment_number'] = df['comment_number'].astype(int)
 
     grouped = df.groupby('image_name').filter(lambda x: len(x) == 5)
     image_list = grouped['image_name'].unique().tolist()
 
-    # 直接使用预定义的选定图像列表（假设你有 selected_images.csv 或硬编码列表）
-    # 示例：从文件读取或硬编码
-    selected_images = image_list  # 如果所有都选定；否则替换为你的选定列表
-    # 或者：selected_images = pd.read_csv('selected_100_images.csv')['image_name'].tolist()
-
+    random.seed(args.seed)
+    selected_images = random.sample(image_list, min(args.num_samples, len(image_list)))
+    
     print(f'Selected {len(selected_images)} images for processing\n')
     
     os.makedirs(args.output_dir, exist_ok=True)
@@ -182,35 +169,37 @@ def model_worker(args: argparse.Namespace) -> None:
             print(f"\n⚠️  Image not found: {img_path}, skipping...")
             continue
         
+        img_base_name = os.path.splitext(img_name)[0]
+        
+        # 创建图片文件夹
+        img_folder = os.path.join(args.output_dir, img_base_name)
+        os.makedirs(img_folder, exist_ok=True)
+        
         print(f"\n{'='*50}")
-        print(f"Processing Image {img_idx}/{len(selected_images)}: {img_name}")
+        print(f"Processing {img_idx}/{len(selected_images)}: {img_name}")
         print(f"{'='*50}")
         
         # 加载图像
         image = Image.open(img_path).convert('RGB')
         image = T_random_resized_crop(image).unsqueeze(0).cuda().to(target_dtype)
         
-        img_base_name = os.path.splitext(img_name)[0]
-        
         # ========== 1. Image-only ==========
-        print(f"[Image-only] Capturing...", end=" ", flush=True)
+        print(f"[1/6] Capturing image.npz...", end=" ", flush=True)
         model.llma.enable_capture = True
         model.llma.captures = {}
         
-        # 使用空prompt只forward一次
         empty_tokens = torch.tensor([[tokenizer.bos_id]]).cuda()
         
         with torch.cuda.amp.autocast(dtype=target_dtype):
             with torch.inference_mode():
                 _ = model.llma.forward_inference(empty_tokens, 0, image=image, modal='image')
         
-        # 保存image-only captures
         np.savez_compressed(
-            os.path.join(args.output_dir, f"{img_base_name}.npz"),
+            os.path.join(img_folder, "image.npz"),
             **model.llma.captures
         )
         model.llma.enable_capture = False
-        print(f"✓ Saved to {img_base_name}.npz")
+        print("✓")
         
         # ========== 2. Text-only (5 prompts) ==========
         prompts_df = grouped[grouped['image_name'] == img_name]
@@ -219,9 +208,7 @@ def model_worker(args: argparse.Namespace) -> None:
             prompt_idx = int(row['comment_number'])
             prompt_text = row['comment']
             
-            print(f"\n{'-'*50}")
-            print(f"Prompt {prompt_idx}/4: {prompt_text[:40]}...")
-            print(f"{'-'*50}")
+            print(f"[{prompt_idx+2}/6] Capturing prompt{prompt_idx}.npz: {prompt_text[:30]}...", end=" ", flush=True)
             
             # 准备prompt
             conv.messages = []
@@ -231,78 +218,30 @@ def model_worker(args: argparse.Namespace) -> None:
             
             # Tokenize
             prompt_tokens = tokenizer.encode(prompt_str, bos=True, eos=False)
-            max_prompt_size = model.llma.params.max_seq_len - args.max_gen_len
-            prompt_tokens = prompt_tokens[-max_prompt_size:]
-            prompt_size = len(prompt_tokens)
+            tokens = torch.tensor(prompt_tokens).cuda().long().unsqueeze(0)
             
-            total_len = min(model.llma.params.max_seq_len, args.max_gen_len + prompt_size)
-            tokens = torch.full([total_len], tokenizer.pad_id).cuda().long()
-            tokens[:len(prompt_tokens)] = torch.tensor(prompt_tokens).long()
+            # Capture
+            model.llma.captures = {}
+            model.llma.enable_capture = True
             
-            # 创建prompt文件夹
-            prompt_dir = os.path.join(args.output_dir, f"{img_base_name}_prompt{prompt_idx}")
-            os.makedirs(prompt_dir, exist_ok=True)
+            with torch.cuda.amp.autocast(dtype=target_dtype):
+                with torch.inference_mode():
+                    _ = model.llma.forward_inference(
+                        tokens, 
+                        0, 
+                        image=None,
+                        modal='image'
+                    )
             
-            # 手动生成循环
-            start_pos = prompt_size
-            prev_pos = 0
-            generated_tokens = []
-            
-            for cur_pos in range(start_pos, total_len):
-                # 清空并启用capture
-                model.llma.captures = {}
-                model.llma.enable_capture = True
-                
-                with torch.cuda.amp.autocast(dtype=target_dtype):
-                    with torch.inference_mode():
-                        logits = model.llma.forward_inference(
-                            tokens[None, prev_pos:cur_pos], 
-                            prev_pos, 
-                            image=None,  # text-only
-                            modal='image'
-                        )
-                
-                # 保存当前token的captures
-                token_save_idx = cur_pos - start_pos
-                np.savez_compressed(
-                    os.path.join(prompt_dir, f"token_{token_save_idx:03d}.npz"),
-                    **model.llma.captures
-                )
-                model.llma.enable_capture = False
-                
-                # 采样下一个token
-                if args.temperature > 0:
-                    probs = torch.softmax(logits / args.temperature, dim=-1)
-                    probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
-                    probs_sum = torch.cumsum(probs_sort, dim=-1)
-                    mask = probs_sum - probs_sort > args.top_p
-                    probs_sort[mask] = 0.0
-                    probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
-                    next_token = torch.multinomial(probs_sort, num_samples=1)
-                    next_token = torch.gather(probs_idx, -1, next_token).item()
-                else:
-                    next_token = torch.argmax(logits, dim=-1).item()
-                
-                # 检查结束
-                if next_token == tokenizer.eos_id:
-                    break
-                
-                tokens[cur_pos] = next_token
-                generated_tokens.append(next_token)
-                prev_pos = cur_pos
-                
-                # 实时显示生成的文本
-                current_text = tokenizer.decode(tokens[start_pos:cur_pos+1].tolist())
-                print(f"\rGenerating: {current_text[:60]}...", end="", flush=True)
-            
-            print(f"\n✓ Generated {len(generated_tokens)} tokens")
-            
-            # 保存完整response
-            final_text = tokenizer.decode(tokens[start_pos:start_pos+len(generated_tokens)].tolist())
-            with open(os.path.join(prompt_dir, "response.txt"), 'w') as f:
-                f.write(final_text)
-            
-            print(f"✓ Saved captures to {img_base_name}_prompt{prompt_idx}/ ({len(generated_tokens)} files)")
+            # 保存
+            np.savez_compressed(
+                os.path.join(img_folder, f"prompt{prompt_idx}.npz"),
+                **model.llma.captures
+            )
+            model.llma.enable_capture = False
+            print("✓")
+        
+        print(f"✓ Completed {img_base_name}/ (6 files)")
     
     print("\n" + "="*60)
     print("✅ All processing completed!")
@@ -321,10 +260,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_samples", type=int, default=100, help="number of images to process")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
     
-    # 生成参数
-    parser.add_argument("--temperature", type=float, default=0.0, help="sampling temperature (0 for greedy)")
-    parser.add_argument("--top_p", type=float, default=0.95, help="top-p sampling (ignored if temperature=0)")
-    parser.add_argument("--max_gen_len", type=int, default=256, help="maximum generation length")
+    # 生成参数 (固定为1)
+    parser.add_argument("--max_gen_len", type=int, default=1, help="maximum generation length (must be 1)")
     
     # Debug模式
     parser.add_argument("--debug", action="store_true", help="enable debug mode with mock captures")
